@@ -8,7 +8,8 @@ import { TokensToRegexpOptions, ParseOptions, Key } from 'path-to-regexp';
 import clearModule from 'clear-module';
 import chokidar from 'chokidar';
 import color from 'colors-cli/safe';
-
+import multer from 'multer';
+const upload = multer();
 
 export type MockerResultFunction = ((req: Request, res: Response, next?: NextFunction) => void);
 export type MockerResult = string | { [key: string]: any } | MockerResultFunction;
@@ -134,6 +135,10 @@ export default function (app: Application, watchFile: string | string[], conf: M
       }
     }
   })
+  //添加multipart/form-data 类型支持
+      app.post('/*',upload.none(),function (req, res, next) {
+        next();
+    });
   // 监听文件修改重新加载代码
   // 配置热更新
   app.all('/*', (req: Request, res: Response, next: NextFunction) => {
