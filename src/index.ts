@@ -1,5 +1,7 @@
 import URL from 'url';
 import PATH from 'path';
+import * as net from "net";
+import * as http from "http";
 import { Request, Response, NextFunction, Application } from 'express';
 import bodyParser from 'body-parser';
 import httpProxy from 'http-proxy';
@@ -11,43 +13,169 @@ import color from 'colors-cli/safe';
 import multer from 'multer';
 const upload = multer();
 
+export type ProxyTargetUrl = string | Partial<URL.Url>;
 export type MockerResultFunction = ((req: Request, res: Response, next?: NextFunction) => void);
-export type MockerResult = string | { [key: string]: any } | MockerResultFunction;
+export type MockerResult = string | number| Array<any> | Record<string, any> | MockerResultFunction;
 
-export interface Mocker {
+/**
+ * Setting a proxy router.
+ * @example
+ *
+ * ```json
+ * {
+ *   '/api/user': {
+ *     id: 1,
+ *     username: 'kenny',
+ *     sex: 6
+ *   },
+ *   'DELETE /api/user/:id': (req, res) => {
+ *     res.send({ status: 'ok', message: '删除成功！' });
+ *   }
+ * }
+ * ```
+ */
+export interface MockerProxyRoute extends Record<string, MockerResult> {
+  /**
+   * This is the option parameter setting for apiMocker
+   * Priority processing.
+   * apiMocker(app, path, option)
+   * {@link MockerOption}
+   */
   _proxy?: MockerOption;
-  [key: string]: MockerResult;
+}
+
+/**
+ * Listening for proxy events.
+ * This options contains listeners for [node-http-proxy](https://github.com/http-party/node-http-proxy#listening-for-proxy-events).
+ * {typeof httpProxy.on}
+ * {@link httpProxy}
+ */
+export interface HttpProxyListeners extends Record<string, any> {
+  start?: (
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    target: ProxyTargetUrl
+  ) => void;
+  proxyReq?: (
+    proxyReq: http.ClientRequest,
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    options: httpProxy.ServerOptions
+  ) => void
+  proxyRes?: (
+    proxyRes: http.IncomingMessage,
+    req: http.IncomingMessage,
+    res: http.ServerResponse
+  ) => void
+  proxyReqWs?: (
+    proxyReq: http.ClientRequest,
+    req: http.IncomingMessage,
+    socket: net.Socket,
+    options: httpProxy.ServerOptions,
+    head: any
+  ) => void
+  econnreset?: (
+    err: Error,
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    target: ProxyTargetUrl
+  ) => void
+  end?: (
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    proxyRes: http.IncomingMessage
+  ) => void;
+  /**
+   * This event is emitted once the proxy websocket was closed.
+   */
+  close?: (
+    proxyRes: http.IncomingMessage,
+    proxySocket: net.Socket,
+    proxyHead: any
+  ) => void
 }
 
 export interface MockerOption {
+  /**
+   * `Boolean` Setting req headers host.
+   */
   changeHost?: boolean;
-  pathRewrite?: {
-    [key: string]: 'string';
-  },
-  proxy?: {
-    [key: string]: 'string';
-  },
+  /**
+   * rewrite target's url path.
+   * Object-keys will be used as RegExp to match paths. [#62](https://github.com/jaywcjlove/mocker-api/issues/62)
+   * @default `{}`
+   */
+  pathRewrite?: Record<string, string>,
+  /**
+   * Proxy settings, Turn a path string such as `/user/:name` into a regular expression. [path-to-regexp](https://www.npmjs.com/package/path-to-regexp)
+   * @default `{}`
+   */
+  proxy?: Record<string, string>,
+  /**
+   * Set the [listen event](https://github.com/nodejitsu/node-http-proxy#listening-for-proxy-events) and [configuration](https://github.com/nodejitsu/node-http-proxy#options) of [http-proxy](https://github.com/nodejitsu/node-http-proxy)
+   * @default `{}`
+   */
   httpProxy?: {
     options?: httpProxy.ServerOptions;
-    listeners?: {
-      [key: string]: () => void;
-    }
+    listeners?: HttpProxyListeners
   };
+  /**
+   * bodyParser settings.
+   * @example
+   *
+   * ```js
+   * bodyParser = {"text/plain": "text","text/html": "text"}
+   * ```
+   *
+   * will parsed `Content-Type='text/plain' and Content-Type='text/html'` with `bodyParser.text`
+   *
+   * @default `{}`
+   */
   bodyParserConf?: {
     [key: string]: 'raw' | 'text' | 'urlencoded' | 'json';
   };
+  /**
+   * [`bodyParserJSON`](https://github.com/expressjs/body-parser/tree/56a2b73c26b2238bc3050ad90af9ab9c62f4eb97#bodyparserjsonoptions) JSON body parser
+   * @default `{}`
+   */
   bodyParserJSON?: bodyParser.OptionsJson;
+  /**
+   * [`bodyParserText`](https://github.com/expressjs/body-parser/tree/56a2b73c26b2238bc3050ad90af9ab9c62f4eb97#bodyparsertextoptions) Text body parser
+   * @default `{}`
+   */
   bodyParserText?: bodyParser.OptionsText;
+  /**
+   * [`bodyParserRaw`](https://github.com/expressjs/body-parser/tree/56a2b73c26b2238bc3050ad90af9ab9c62f4eb97#bodyparserrawoptions) Raw body parser
+   * @default `{}`
+   */
   bodyParserRaw?: bodyParser.Options;
+  /**
+   * [`bodyParserUrlencoded`](https://github.com/expressjs/body-parser/tree/56a2b73c26b2238bc3050ad90af9ab9c62f4eb97#bodyparserurlencodedoptions) URL-encoded form body parser
+   * @default `{}`
+   */
   bodyParserUrlencoded?: bodyParser.OptionsUrlencoded;
+  /**
+   * Options object as defined [chokidar api options](https://github.com/paulmillr/chokidar#api)
+   * @default `{}`
+   */
   watchOptions?: chokidar.WatchOptions;
-  header?: {
-    [key: string]: string | number | string[];
-  }
+  /**
+   * Access Control Allow options.
+   * @default `{}`
+   * @example
+   * ```js
+   * {
+   *  header: {
+   *    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
+   *  }
+   * }
+   * ```
+   */
+  header?: Record<string,string | number | string[]>
 }
 
 const pathToRegexp = toRegexp.pathToRegexp;
-let mocker: Mocker = {};
+let mocker: MockerProxyRoute = {};
 
 function pathMatch(options: TokensToRegexpOptions & ParseOptions) {
   options = options || {};
@@ -71,14 +199,17 @@ function pathMatch(options: TokensToRegexpOptions & ParseOptions) {
   }
 }
 
-export default function (app: Application, watchFile: string | string[], conf: MockerOption = {}) {
-  const watchFiles = Array.isArray(watchFile) ? watchFile : [watchFile];
+export default function (app: Application, watchFile: string | string[] | MockerProxyRoute, conf: MockerOption = {}) {
+  const watchFiles = Array.isArray(watchFile) ? watchFile : typeof watchFile === 'string' ? [watchFile] : [];
+
   if (watchFiles.some(file => !file)) {
     throw new Error('Mocker file does not exist!.');
   }
 
-  mocker = getConfig();
-
+  // Mybe watch file or pass parameters
+  // https://github.com/jaywcjlove/mocker-api/issues/116
+  const isWatchFilePath = (Array.isArray(watchFile) && watchFile.every(val => typeof val === 'string')) || typeof watchFile === 'string';
+  mocker = isWatchFilePath ? getConfig() : watchFile;
 
   if (!mocker) {
     return (req: Request, res: Response, next: NextFunction) => {
@@ -115,34 +246,36 @@ export default function (app: Application, watchFile: string | string[], conf: M
   // watchOptions = {},
   // header = {}
 
-  // 监听配置入口文件所在的目录，一般为认为在配置文件/mock 目录下的所有文件
-  // 加上require.resolve，保证 `./mock/`能够找到`./mock/index.js`，要不然就要监控到上一级目录了
-  const watcher = chokidar.watch(watchFiles.map(watchFile => PATH.dirname(require.resolve(watchFile))), options.watchOptions);
+  if (isWatchFilePath) {
+    // 监听配置入口文件所在的目录，一般为认为在配置文件/mock 目录下的所有文件
+    // 加上require.resolve，保证 `./mock/`能够找到`./mock/index.js`，要不然就要监控到上一级目录了
+    const watcher = chokidar.watch(watchFiles.map(watchFile => PATH.dirname(require.resolve(watchFile))), options.watchOptions);
 
-  watcher.on('all', (event, path) => {
-    if (event === 'change' || event === 'add') {
-      try {
-        // 当监听的可能是多个配置文件时，需要清理掉更新文件以及入口文件的缓存，重新获取
-        cleanCache(path);
-        watchFiles.forEach(file => cleanCache(file));
-        mocker = getConfig();
-        if (mocker._proxy) {
-          options = { ...options, ...mocker._proxy };
+    watcher.on('all', (event, path) => {
+      if (event === 'change' || event === 'add') {
+        try {
+          // 当监听的可能是多个配置文件时，需要清理掉更新文件以及入口文件的缓存，重新获取
+          cleanCache(path);
+          watchFiles.forEach(file => cleanCache(file));
+          mocker = getConfig();
+          if (mocker._proxy) {
+            options = { ...options, ...mocker._proxy };
+          }
+          console.log(`${color.green_b.black(' Done: ')} Hot Mocker ${color.green(path.replace(process.cwd(), ''))} file replacement success!`);
+        } catch (ex) {
+          console.error(`${color.red_b.black(' Failed: ')} Hot Mocker ${color.red(path.replace(process.cwd(), ''))} file replacement failed!!`);
         }
-        console.log(`${color.green_b.black(' Done: ')} Hot Mocker ${color.green(path.replace(process.cwd(), ''))} file replacement success!`);
-      } catch (ex) {
-        console.error(`${color.red_b.black(' Failed: ')} Hot Mocker ${color.red(path.replace(process.cwd(), ''))} file replacement failed!!`);
       }
-    }
-  })
-  //添加multipart/form-data 类型支持
-      app.post('/*',upload.none(),function (req, res, next) {
+    })
+  }
+    //添加multipart/form-data 类型支持
+    app.post('/*',upload.none(),function (req, res, next) {
         next();
     });
   // 监听文件修改重新加载代码
   // 配置热更新
   app.all('/*', (req: Request, res: Response, next: NextFunction) => {
-    
+
     /**
      * Get Proxy key
      */
@@ -185,7 +318,7 @@ export default function (app: Application, watchFile: string | string[], conf: M
       if (options.changeHost) {
         req.headers.host = url.host;
       }
-      const { options: proxyOptions = {}, listeners: proxyListeners = {} }: MockerOption['httpProxy'] = options.httpProxy;
+      const { options: proxyOptions = {}, listeners: proxyListeners = {} as HttpProxyListeners }: MockerOption['httpProxy'] = options.httpProxy;
       /**
        * rewrite target's url path. Object-keys will be used as RegExp to match paths.
        * https://github.com/jaywcjlove/mocker-api/issues/62
