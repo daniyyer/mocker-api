@@ -20,7 +20,7 @@ import * as mime from 'mime-types';
     filename: function (req: Request, file: { fieldname: string,mimetype:string }, cb:(any:any,path:any)=>void) {
         let ext = mime.extension(file.mimetype);
         // console.log(ext)
-        cb(null, file.fieldname + '-' + Date.now()+ext)
+        cb(null, file.fieldname + '-' + Date.now()+"."+ext)
     }
 });
 let upload = multer({ storage: storage });
