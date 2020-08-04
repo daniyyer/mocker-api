@@ -11,8 +11,21 @@ import clearModule from 'clear-module';
 import chokidar from 'chokidar';
 import color from 'colors-cli/safe';
 import multer from 'multer';
-const upload = multer();
+import * as mime from 'mime-types';
 
+ let storage = multer.diskStorage({
+    destination: function (req: Request, file: any, cb:(any:any,path:any)=>void) {
+        cb(null, './uploads')
+    },
+    filename: function (req: Request, file: { fieldname: string,mimetype:string }, cb:(any:any,path:any)=>void) {
+        let ext = mime.extension(file.mimetype);
+        // console.log(ext)
+        cb(null, file.fieldname + '-' + Date.now()+ext)
+    }
+});
+let upload = multer({ storage: storage });
+
+let upload_none = multer();
 export type ProxyTargetUrl = string | Partial<URL.Url>;
 export type MockerResultFunction = ((req: Request, res: Response, next?: NextFunction) => void);
 export type MockerResult = string | number| Array<any> | Record<string, any> | MockerResultFunction;
@@ -268,8 +281,12 @@ export default function (app: Application, watchFile: string | string[] | Mocker
       }
     })
   }
+  //添加上传图片类型支持
+    app.post('/api/upload/image', upload.single('file'), function (req, res, next) {
+        next();
+    });
     //添加multipart/form-data 类型支持
-    app.post('/*',upload.none(),function (req, res, next) {
+    app.post('/*',upload_none.none(),function (req, res, next) {
         next();
     });
   // 监听文件修改重新加载代码
