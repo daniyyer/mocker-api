@@ -281,8 +281,10 @@ export default function (app: Application, watchFile: string | string[] | Mocker
       }
     })
   }
-  //添加上传图片类型支持
-    app.post('/api/upload/image', upload.single('file'), function (req, res, next) {
+
+    //添加上传类型支持 url 固定为/api/upload,单文件的字段名为file,多文件的字段名为files
+    const cpUpload = upload.fields([{ name: 'file', maxCount: 1 }, { name: 'files', maxCount: 8 }])
+    app.post('/api/upload', cpUpload, function (req, res, next) {
         next();
     });
     //添加multipart/form-data 类型支持
